@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
-
+from torch_kmeans import KMeans
 
 
 def get_arguments():
@@ -33,6 +33,9 @@ def get_arguments():
     
     parser.add_argument('--max_objects', type=int, default=10)
     parser.add_argument('--iou_threshold', type=float, default=0.8)
+
+    parser.add_argument('--max_origins', type=int, default=3)
+    parser.add_argument('--return_sims', type=bool, default=True)
     
     args = parser.parse_args()
     return args
@@ -77,9 +80,18 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
         output_path = os.path.join(output_path, obj_name)
         os.makedirs(output_path, exist_ok=True)
         training_size = int(len(os.listdir(os.path.join(images_path, obj_name)))  * args.training_percentage)
+
+        if i == 0:
+            if training_size < args.max_origins:
+                print ('H warning: training_size < max_origins, using training_size instead.')
+                feats_size = training_size
+            else:
+                feats_size = args.max_origins
+            feats = []
+
         for ref_idx in range(training_size):
             # Path preparation
-            ref_image_path = os.path.join(images_path, obj_name, '{:02}.jpg'.format(ref_idx))
+            ref_image_path = os.path.join(images_path, obj_name, '{:02}.png'.format(ref_idx))
             ref_mask_path = os.path.join(masks_path, obj_name, '{:02}.png'.format(ref_idx))
             test_images_path = os.path.join(images_path, obj_name)
 
@@ -107,6 +119,8 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
             target_feat_max = torch.max(target_feat, dim=0)[0]
             target_feat = (target_feat_max / 2 + target_feat_mean / 2).unsqueeze(0)
 
+            feats.append (target_feat.copy ())
+
             # Cosine similarity
             h, w, C = ref_feat.shape
             target_feat = target_feat / target_feat.norm(dim=-1, keepdim=True)
@@ -120,6 +134,7 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
                             sim,
                             input_size=predictor.input_size,
                             original_size=predictor.original_size).squeeze()
+            
 
             # Positive location prior
             topk_xy, topk_label = point_selection(sim, topk=1)
@@ -165,12 +180,19 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
             # print('======> Mask weights:\n', weights_np)
         print('LR: {:.6f}, Dice_Loss: {:.4f}, Focal_Loss: {:.4f}'.format(current_lr, dice_loss.item(), focal_loss.item()))
 
+        if i == 0:
+            km_model = KMeans(n_clusters=feats_size)
+            feats = torch.cat (feats, axis=0)
+            km_model.fit(feats)
+            oris = km_model.cluster_centers_
+
+    #print(labels)
     print('======> Start Testing')
     for test_idx in tqdm(range(len(os.listdir(test_images_path)))):
 
         # Load test image
         test_idx = '%02d' % test_idx
-        test_image_path = test_images_path + '/' + test_idx + '.jpg'
+        test_image_path = test_images_path + '/' + test_idx + '.png'
         test_image = cv2.imread(test_image_path)
         test_image = cv2.cvtColor(test_image, cv2.COLOR_BGR2RGB)
         test_image_original = cv2.imread(test_image_path)
@@ -187,17 +209,23 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
             C, h, w = test_feat.shape
             test_feat = test_feat / test_feat.norm(dim=0, keepdim=True)
             test_feat = test_feat.reshape(C, h * w)
-            sim = target_feat @ test_feat
 
-            sim = sim.reshape(1, 1, h, w)
-            sim = F.interpolate(sim, scale_factor=4, mode="bilinear")
-            sim = predictor.model.postprocess_masks(
-                            sim,
-                            input_size=predictor.input_size,
-                            original_size=predictor.original_size).squeeze()
+            topk_xys = []
+            topk_labels = []
+            for idx_feat in feats_size:
+                target_feat = oris [idx_feat]
 
-            # Positive location prior
-            topk_xy, topk_label = point_selection(sim, topk=1)
+                sim = target_feat @ test_feat
+                sim = sim.reshape(1, 1, h, w)
+                sim = F.interpolate(sim, scale_factor=4, mode="bilinear")
+                sim = predictor.model.postprocess_masks(
+                                sim,
+                                input_size=predictor.input_size,
+                                original_size=predictor.original_size).squeeze()
+
+                # Positive location prior
+                topk_xy, topk_label = point_selection(sim, topk=1)
+                topk_xys.append (topk_xy, topk_label)
 
             # First-step prediction
             masks, scores, logits, logits_high = predictor.predict(
@@ -263,9 +291,9 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
         # Save masks
         
         plt.imshow(test_image_original)
-        vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}_objects:{len(history_masks)}.jpg')
+        vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}_objects:{len(history_masks)}.png')
         with open(vis_mask_output_path, 'wb') as outfile:
-            plt.savefig(outfile, format='jpg')
+            plt.savefig(outfile, format='png')
 
         mask_output_path = os.path.join(output_path, test_idx + '.png')
         cv2.imwrite(mask_output_path, mask_colors)

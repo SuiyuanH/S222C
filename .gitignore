@@ -36,5 +36,9 @@ _darcs
 
 # output 
 data
+outputs
+figs
+examples
 work_dirs
+raw_data
 

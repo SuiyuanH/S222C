@@ -51,7 +51,7 @@ def persam(args, obj_name, images_path, masks_path, output_path):
     print("\n------------> Segment " + obj_name)
     
     # Path preparation
-    ref_image_path = os.path.join(images_path, obj_name, args.ref_idx + '.jpg')
+    ref_image_path = os.path.join(images_path, obj_name, args.ref_idx + '.png')
     ref_mask_path = os.path.join(masks_path, obj_name, args.ref_idx + '.png')
     test_images_path = os.path.join(images_path, obj_name)
 
@@ -98,7 +98,7 @@ def persam(args, obj_name, images_path, masks_path, output_path):
     
         # Load test image
         test_idx = '%02d' % test_idx
-        test_image_path = test_images_path + '/' + test_idx + '.jpg'
+        test_image_path = test_images_path + '/' + test_idx + '.png'
         test_image = cv2.imread(test_image_path)
         test_image = cv2.cvtColor(test_image, cv2.COLOR_BGR2RGB)
 
@@ -169,9 +169,9 @@ def persam(args, obj_name, images_path, masks_path, output_path):
         show_points(topk_xy, topk_label, plt.gca())
         plt.title(f"Mask {best_idx}", fontsize=18)
         plt.axis('off')
-        vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}.jpg')
+        vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}.png')
         with open(vis_mask_output_path, 'wb') as outfile:
-            plt.savefig(outfile, format='jpg')
+            plt.savefig(outfile, format='png')
 
         final_mask = masks[best_idx]
         mask_colors = np.zeros((final_mask.shape[0], final_mask.shape[1], 3), dtype=np.uint8)
