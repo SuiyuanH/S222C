@@ -34,6 +34,9 @@ model_ts*.txt
 .vscode
 _darcs
 
+# logs
+*.log
+
 # output 
 data
 outputs
@@ -41,4 +44,6 @@ figs
 examples
 work_dirs
 raw_data
+draft*
+
 

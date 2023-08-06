@@ -1,6 +1,10 @@
 import os
 import shutil
+import cv2
+import numpy as np
 
+#start_idx = 55
+#num_samples = 999
 start_idx = 120
 num_samples = 20
 step = 1
@@ -20,11 +24,15 @@ while new_idx < num_samples:
     if not os.path.exists (im):
         print ('Warning: got less than expected!')
         break
+    shutil.copyfile (im, 'data/Images/BD4RDH/{:02d}.png'.format (new_idx))
+    
+    samples.append (old_idx)
     if os.path.exists (mask):
-        shutil.copyfile (im, 'data/Images/BD4RDH/{:02d}.png'.format (new_idx))
         shutil.copyfile (mask, 'data/Annotations/BD4RDH/{:02d}.png'.format (new_idx))
-        new_idx += 1
-        samples.append (old_idx)
+    else:
+        new_mask = np.zeros ([512, 512], dtype=np.uint8)
+        cv2.imwrite ('data/Annotations/BD4RDH/{:02d}.png'.format (new_idx), new_mask)
+    new_idx += 1
     old_idx += step
 
 print ('Finish setting and got', samples)
